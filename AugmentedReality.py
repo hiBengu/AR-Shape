@@ -53,6 +53,7 @@ class AugmentedReality():
         self.selected_colour = (255, 255, 255)
 
         self.pinch = None
+        self.prev_angle = None
         self.move_multiplier = 1.2
 
         self.mp_hands = mp.solutions.hands
@@ -159,7 +160,7 @@ class AugmentedReality():
         elif event == cv2.EVENT_LBUTTONUP:
             if self.drawing and self.start_point:
                 self.objects.append(self.current_obj_corners)
-            print(self.objects)
+            # print(self.objects)
             self.drawing = False
             self.start_point = None
             self.temp_point = None
@@ -186,7 +187,7 @@ class AugmentedReality():
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
                 # Draw hand landmarks
-                self.mp_drawing.draw_landmarks(self.frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+                # self.mp_drawing.draw_landmarks(self.frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
                 # Extract coordinates (example: index finger tip)
                 h, w, _ = self.frame.shape
@@ -201,7 +202,39 @@ class AugmentedReality():
                 length = 40
                 self.end_point = self.tip_point + (direction * length).astype(int)
 
-                cv2.line(self.frame, tuple(self.tip_point), tuple(self.end_point), (255, 0, 255), 1)
+                dx = self.end_point[0] - self.tip_point[0]
+                dy = self.end_point[1] - self.tip_point[1]
+                angle_rad = math.atan2(-dy, dx)  # Negate dy because OpenCV y-axis increases downward
+                self.direction_angle = math.degrees(angle_rad)
+
+                # cv2.line(self.frame, tuple(self.tip_point), tuple(self.end_point), (255, 0, 255), 2)
+
+    def move_object(self, move_x, move_y):
+        # Rotation formula 
+        # x' = cos(θ) * (x - cx) - sin(θ) * (y - cy) + cx 
+        # y' = sin(θ) * (x - cx) + cos(θ) * (y - cy) + cy
+        if self.selected_obj != -1:
+            center = np.mean(self.objects[self.selected_obj], axis=0)
+            print(f"Center: {center}")
+
+            cos_a = math.cos(math.radians(self.pinch_direction_diff))
+            sin_a = math.sin(math.radians(self.pinch_direction_diff))
+
+            rotation_matrix = np.array([
+                [cos_a, -sin_a],
+                [sin_a,  cos_a]
+            ])
+
+            translated = self.objects[self.selected_obj] - center
+            rotated = translated.dot(rotation_matrix.T)
+            self.objects[self.selected_obj] = rotated + center
+
+            for i, corners in enumerate(self.objects[self.selected_obj]):
+                self.objects[self.selected_obj][i] = (
+                    corners[0] + move_x*self.move_multiplier, 
+                    corners[1] + move_y*self.move_multiplier
+                    )
+        # cv2.putText(self.frame, "Pinch!", (self.tip_point[0], self.tip_point[1] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
     def pinch_detection(self):
         if self.results.multi_hand_landmarks:
@@ -211,18 +244,25 @@ class AugmentedReality():
                 thumb_x, thumb_y = int(thumb_tip.x * w), int(thumb_tip.y * h)
                 distance = np.linalg.norm(self.tip_point - np.array([thumb_x, thumb_y]))
 
-
                 if distance < 20:
                     self.pinch = True
-                    if self.selected_obj != -1:
-                        move_x = thumb_x - self.prev_thumb_x
-                        move_y = thumb_y - self.prev_thumb_y
 
-                        for i, corners in enumerate(self.objects[self.selected_obj]):
-                            self.objects[self.selected_obj][i] = ((corners[0] + move_x*self.move_multiplier), corners[1] + move_y*self.move_multiplier)
-                    cv2.putText(self.frame, "Pinch!", (self.tip_point[0], self.tip_point[1] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    move_x = thumb_x - self.prev_thumb_x
+                    move_y = thumb_y - self.prev_thumb_y
+
+                    if self.prev_angle is None:
+                        self.prev_angle = self.direction_angle
+                    diff = self.prev_angle - self.direction_angle 
+                    self.pinch_direction_diff = min(diff, 360 - diff)
+                    self.prev_angle = self.direction_angle
+                    if(abs(self.pinch_direction_diff) < 1.0):
+                        self.pinch_direction_diff = 0
+                    print(f"Direction diff: {self.pinch_direction_diff}")
+
+                    self.move_object(move_x, move_y)
                 else:
                     self.pinch = False
+                    self.prev_angle = None
                 
                 self.prev_thumb_x = thumb_x
                 self.prev_thumb_y = thumb_y
@@ -262,7 +302,7 @@ class AugmentedReality():
             for j, corners in enumerate(obj):
                 self.objects[i][j] = (corners[0] + self.avg_motion[0], corners[1] + self.avg_motion[1])
 
-        print(f"Camera shift: {self.avg_motion}")
+        # print(f"Camera shift: {self.avg_motion}")
 
     def mask_hand(self):
         # Step 1: Create full mask (1 = valid, 0 = masked out)
