@@ -5,6 +5,11 @@ import math
 
 class AugmentedReality():
     def __init__(self):
+        """
+            Initializes all the parameters used in the class
+        """
+
+        # GUI Paramters
         self.height = 480
         self.width = 640
 
@@ -44,6 +49,7 @@ class AugmentedReality():
                     )
         }
 
+        # Object drawing parameters
         self.drawing = False
         self.smoothness_val = 6
         self.temp_line = []
@@ -52,15 +58,29 @@ class AugmentedReality():
         self.object_colour = (0, 0, 255)
         self.selected_colour = (255, 255, 255)
 
+        # Object selection parameters
+        self.selected_obj = None
         self.pinch = None
+        self.counter = 0
         self.prev_angle = None
-        self.move_multiplier = 1.2
+        self.prev_thumb_x = None
+        self.angle_threshold = 30
+        self.move_multiplier = 1.25
+        self.rotate_multipler = 0.6
+        self.pinch_detection_threshold = 30
+        self.pinch_counter = 10
 
+        # Object Movement parameters
+        self.object_persistence = False
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
     
     def draw_buttons(self):
-        # cv2.rectangle(img, (x1, y1), (x2, y2), color=(255,0,0), thickness=2)
+        """
+            Draw the buttons specificed by self.buttons dictionary.
+            Locations are relative to top left corner of the screen (0, 0).
+            (frame, top_left_corner, bottom_right_corner, colour, thickness)
+        """
         for text, ((x1, y1), (x2, y2)) in self.buttons.items():
             cv2.rectangle(
                 self.frame, 
@@ -79,6 +99,10 @@ class AugmentedReality():
             ) 
 
     def put_mode(self):
+        """
+            Put the current mode text on the screen.
+            (frame, text, top_left_corner, font, fontScale, colour, thickness)
+        """
         cv2.putText(
             self.frame, f"Current Mode: {self.mode}", 
             (self.text_offset, self.height - self.text_offset),
@@ -89,6 +113,12 @@ class AugmentedReality():
         )
         
     def draw_objects(self):
+        """
+            Draw the objects inside the self.objects.
+            Each object is a list of tuples, where each tuple represents the corners.
+            Corners are given to polylines function.
+            Object is highlighted while drawing if it is the selected object. 
+        """
         for i, object_points in enumerate(self.objects):
             pts = np.array(object_points, np.int32).reshape((-1, 1, 2))
             cv2.polylines(
@@ -100,6 +130,11 @@ class AugmentedReality():
             ) 
 
     def check_button_click(self, x, y):
+        """
+            Checks if the given coordinates are on a button.
+                Return True if the mouse is on a button, False if not.
+                Change  mode.
+        """
         for name, ((x1, y1), (x2, y2)) in self.buttons.items():
             if x1 <= x <= x2 and y1 <= y <= y2:
                 self.mode = name
@@ -108,6 +143,12 @@ class AugmentedReality():
         return False
 
     def check_angle_difference(self):
+        """
+            Calculate the angle difference in the self.smoothnes_val points,
+            comparing the angles of the first half of the points to the last half.
+                Return angle difference
+        """
+
         point_0 = self.temp_line[0]
         point_1 = self.temp_line[int(self.smoothness_val/2)-1]
         point_2 = self.temp_line[int(self.smoothness_val/2)]
@@ -116,21 +157,27 @@ class AugmentedReality():
         dx = point_1[0] - point_0 [0]
         dy = point_1[1] - point_0 [1]
 
-        angle_rad = math.atan2(-dy, dx)  # Negate dy because OpenCV y-axis increases downward
+        # -dy since opencv y coordinates are reversed
+        angle_rad = math.atan2(-dy, dx)  
         old_angle_deg = math.degrees(angle_rad)
 
         dx = point_3[0] - point_2[0]
         dy = point_3[1] - point_2[1]
 
-        angle_rad = math.atan2(-dy, dx)  # Negate dy because OpenCV y-axis increases downward
+        angle_rad = math.atan2(-dy, dx)
         new_angle_deg = math.degrees(angle_rad)
 
-        # print(f"Current: {old_angle_deg}, new: {new_angle_deg}")
         diff = abs(old_angle_deg - new_angle_deg) % 360
         diff = min(diff, 360 - diff)
         return diff
 
     def keep_line(self, x, y):
+        """
+            Keeps last self.smoothnes_val points in an array.
+            Adds the new location and removes the first input if size limit is reached.
+            Checks if the angle difference is higher than self.angle_threshold.
+            If so, save it as a corner.
+        """
         if(len(self.temp_line) != 0):
             if(self.temp_line[-1] == (x, y)):
                 return
@@ -140,34 +187,50 @@ class AugmentedReality():
         if(len(self.temp_line) > self.smoothness_val):
             self.temp_line.pop(0)
             if (self.check_angle_difference() > 30):
+                self.current_obj_corners.append(self.temp_line[int(self.smoothness_val/2)])
                 self.temp_line = []
-                self.current_obj_corners.append((x,y))
 
     def mouse_callback(self, event, x, y, flags, param):
+        """
+            Callback for mouse events.
+            If clicked on the mouse:
+                If it is on a button, change the mode.
+                If not, start drawing the object.
+            If mouse is moved while drawing is True:
+                Update the line array for object drawing and check angle inside.
+            If mouse is released:
+                Reset drawing parameters and save the point as the last corner
+        """
         if event == cv2.EVENT_LBUTTONDOWN:
             is_button = self.check_button_click(x, y)
-            if not is_button:
-                self.drawing = True
-                self.start_point = (x, y)
-                self.current_obj_corners.append((x,y))
-                # self.temp_line.append((x,y))
+            if(self.mode == "Edit"):
+                if not is_button:
+                    self.drawing = True
+                    self.start_point = (x, y)
+                    self.current_obj_corners.append((x,y))
         
         elif event == cv2.EVENT_MOUSEMOVE:
             if self.drawing:
-                self.temp_point = (x, y)
                 self.keep_line(x, y)
         
         elif event == cv2.EVENT_LBUTTONUP:
             if self.drawing and self.start_point:
                 self.objects.append(self.current_obj_corners)
-            # print(self.objects)
+            
             self.drawing = False
             self.start_point = None
-            self.temp_point = None
             self.temp_line = []
             self.current_obj_corners = []
 
     def wait_keyboard(self):
+        """
+            Checks for a keyboard input.
+                ESC - close program
+                e E - Edit Mode
+                i I - Interact Mode
+                u U - Undo last drawn object
+                c C - Clear all objects 
+        """
         key_num = cv2.waitKeyEx(1)
         match key_num:
             case self.ESC_KEY:
@@ -184,12 +247,18 @@ class AugmentedReality():
         return True
 
     def selection_detection(self):
+        """
+            Saves index finger locations.
+            Calculate an and point away from the index tip but on the 
+                same direction of index finger for using object selection.
+        """
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
+
                 # Draw hand landmarks
                 # self.mp_drawing.draw_landmarks(self.frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
-                # Extract coordinates (example: index finger tip)
+                # Get the locatiosn of index finger base and top
                 h, w, _ = self.frame.shape
                 index_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
                 index_base = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_MCP]
@@ -197,28 +266,37 @@ class AugmentedReality():
                 self.tip_point = np.array([int(index_tip.x * w), int(index_tip.y * h)])
                 base_point = np.array([int(index_base.x * w), int(index_base.y * h)])
 
+                # Find the direction vector, multiply it with self.dir_length and calculate
+                # a point for the end of a virtual line from the finger
                 direction = self.tip_point - base_point
                 direction = direction / np.linalg.norm(direction)
-                length = 40
+                length = 60
                 self.end_point = self.tip_point + (direction * length).astype(int)
 
+                # Calculate the direction angle of the index finger, Could also be done between tip and base
                 dx = self.end_point[0] - self.tip_point[0]
                 dy = self.end_point[1] - self.tip_point[1]
-                angle_rad = math.atan2(-dy, dx)  # Negate dy because OpenCV y-axis increases downward
+                angle_rad = math.atan2(-dy, dx)
                 self.direction_angle = math.degrees(angle_rad)
 
                 # cv2.line(self.frame, tuple(self.tip_point), tuple(self.end_point), (255, 0, 255), 2)
 
     def move_object(self, move_x, move_y):
+        """
+            If there is a selected object:
+                Move it according to the given coordinates
+                Rotate it using the angle difference on the index finger after the pinch detection
+        """
+
         # Rotation formula 
         # x' = cos(θ) * (x - cx) - sin(θ) * (y - cy) + cx 
         # y' = sin(θ) * (x - cx) + cos(θ) * (y - cy) + cy
         if self.selected_obj != -1:
             center = np.mean(self.objects[self.selected_obj], axis=0)
-            print(f"Center: {center}")
+            # print(f"Center: {center}")
 
-            cos_a = math.cos(math.radians(self.pinch_direction_diff))
-            sin_a = math.sin(math.radians(self.pinch_direction_diff))
+            cos_a = math.cos(math.radians(self.pinch_direction_diff * self.rotate_multipler))
+            sin_a = math.sin(math.radians(self.pinch_direction_diff * self.rotate_multipler))
 
             rotation_matrix = np.array([
                 [cos_a, -sin_a],
@@ -237,38 +315,64 @@ class AugmentedReality():
         # cv2.putText(self.frame, "Pinch!", (self.tip_point[0], self.tip_point[1] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
     def pinch_detection(self):
+        """
+            Get the thumb finger locations.
+            Calculate the distance between index and thumb finger tips.
+            If distance is smaller than self.pinch_detection_threshold:
+                Calculate the angle difference between previous frame
+                Then, move the object
+        """
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
+                # Calculate the distance between index and thumb
                 h, w, _ = self.frame.shape
                 thumb_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.THUMB_TIP]
                 thumb_x, thumb_y = int(thumb_tip.x * w), int(thumb_tip.y * h)
                 distance = np.linalg.norm(self.tip_point - np.array([thumb_x, thumb_y]))
 
-                if distance < 20:
+                # Keeps a counter, assume pinch continues for self.pinch_counter frames.
+                if distance < self.pinch_detection_threshold or (self.counter > 0 and self.counter < self.pinch_counter):
+                    self.counter += 1 if distance > self.pinch_detection_threshold else 0
                     self.pinch = True
 
+                    if self.prev_thumb_x is None:
+                        break
+                    
+                    # Calculate location change
                     move_x = thumb_x - self.prev_thumb_x
                     move_y = thumb_y - self.prev_thumb_y
 
                     if self.prev_angle is None:
                         self.prev_angle = self.direction_angle
-                    diff = self.prev_angle - self.direction_angle 
+                    
+                    diff = (self.prev_angle - self.direction_angle + 180) % 360 - 180
                     self.pinch_direction_diff = min(diff, 360 - diff)
                     self.prev_angle = self.direction_angle
-                    if(abs(self.pinch_direction_diff) < 1.0):
+                    # Zero small directiong changes
+                    if(abs(self.pinch_direction_diff) < 1):
                         self.pinch_direction_diff = 0
-                    print(f"Direction diff: {self.pinch_direction_diff}")
 
                     self.move_object(move_x, move_y)
                 else:
+                    self.counter = -1
                     self.pinch = False
                     self.prev_angle = None
                 
+                # Update prev thumious thumb locations
                 self.prev_thumb_x = thumb_x
                 self.prev_thumb_y = thumb_y
 
 
     def check_collisions(self):
+        """
+            Check if selection points are on an objects. 
+            Selection points are previous calculated locations as below:
+                - Index finger tip
+                - self.end_points, A point calculated on the same direction with index finger
+                    but away from it for better selection of objects
+            If currently pinching, does not update the selection after release
+            If both points are on an object, index finger is prioritized
+        """
         if(self.pinch):
             return
 
@@ -282,7 +386,7 @@ class AugmentedReality():
                 direction_result = cv2.pointPolygonTest(contour, (int(self.end_point[0]), int(self.end_point[1])), measureDist=False)
                 tip_result = cv2.pointPolygonTest(contour, (int(self.tip_point[0]), int(self.tip_point[1])), measureDist=False)
 
-                # did it this way so finger has the priority
+                # Prioritize index tip
                 if tip_result >= 0:
                     self.tip_selected = i
                     continue      
@@ -293,6 +397,9 @@ class AugmentedReality():
         self.selected_obj = self.tip_selected if self.tip_selected != -1 else self.direction_selected
 
     def stabilize_objects(self):
+        """
+            Move the objects according to the avg motion cause by the camera
+        """
         if(abs(self.avg_motion[0]) < 1):
             self.avg_motion[0] = 0
         if(abs(self.avg_motion[1]) < 1):
@@ -305,10 +412,11 @@ class AugmentedReality():
         # print(f"Camera shift: {self.avg_motion}")
 
     def mask_hand(self):
-        # Step 1: Create full mask (1 = valid, 0 = masked out)
+        """
+            Create a mask over the hand and save it as self.mask
+        """
         self.mask = np.ones_like(self.gray, dtype=np.uint8)
-
-        # Step 2: If hand detected, create mask on hand area
+        # If hand detected, create mask on hand area
         if self.results.multi_hand_landmarks:
             for hand_landmarks in self.results.multi_hand_landmarks:
                 h, w = self.gray.shape
@@ -319,6 +427,10 @@ class AugmentedReality():
                 cv2.fillPoly(self.mask, [np.array(points, dtype=np.int32)], 0)
 
     def detect_camera_movement(self):
+        """
+            Select points on the image for calculationg motion vectors.
+            Get the average for calculating average motion and save it.
+        """
         # New points for object stabilization
         if self.bg_pts is not None and self.old_pts is not None:
             new_pts, status, err = cv2.calcOpticalFlowPyrLK(self.old_gray, self.gray, self.old_pts, None)
@@ -332,12 +444,26 @@ class AugmentedReality():
                     motion_vectors = self.good_new - good_old
                     self.avg_motion = np.mean(motion_vectors, axis=0)
                 else:
+                    self.old_pts = self.bg_pts
+                    self.old_gray = self.gray.copy()
                     self.avg_motion = np.array([0.0, 0.0])  # Or None if you prefer
         else:
             self.old_pts = self.bg_pts
+        
+        # Update old values
+        self.old_gray = self.gray.copy()
+        self.old_pts = self.good_new.reshape(-1, 1, 2)
 
 
     def start(self):
+        """
+            Main loop of the app. Initializes and reads the camera.
+            Checks for a key input on every loop and manges calculations and drawings.
+                - Masks the hand in the image and detects camera movement(If enabled)
+                - Shows buttons and text on frame
+                - In interact mode, checks object selection
+                - Draws objects on frame
+        """
         self.cap = cv2.VideoCapture(1)
         self.hands = self.mp_hands.Hands(
             max_num_hands=2,
@@ -345,12 +471,12 @@ class AugmentedReality():
             min_tracking_confidence=0.7
         )
 
-
         if not self.cap.isOpened():
             print("Cannot open webcam")
             return
 
         cv2.namedWindow("AR App")
+        # Add callback for mouse events
         cv2.setMouseCallback("AR App", self.mouse_callback)
 
         ret, old_frame = self.cap.read()
@@ -361,6 +487,7 @@ class AugmentedReality():
         self.old_pts = cv2.goodFeaturesToTrack(self.old_gray, maxCorners=100, qualityLevel=0.3, minDistance=7)
 
         while self.wait_keyboard():
+            # Reset index finger locations
             self.tip_point = None
             self.end_point = None
 
@@ -371,30 +498,28 @@ class AugmentedReality():
             # Resize for consistency
             self.frame = cv2.resize(self.frame, (self.width, self.height))
 
-            # Flip the image
+            # Flip the image & convert RGB for Hand tracking 
             self.frame = cv2.flip(self.frame, 1)
-            # RGB for Hand tracking gray for camera movement
-            self.gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
             rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
 
+            # Save Hand Detection results
             self.results = self.hands.process(rgb)
 
-            self.mask_hand()
-            self.bg_pts = cv2.goodFeaturesToTrack(self.gray, mask=self.mask, maxCorners=100, qualityLevel=0.3, minDistance=7)
-
-            self.detect_camera_movement()
-            self.stabilize_objects()
-
-            # Update old values
-            self.old_gray = self.gray.copy()
-            self.old_pts = self.good_new.reshape(-1, 1, 2)
+            if(self.object_persistence):
+                # Convert gray for camera movement
+                self.gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                self.mask_hand()
+                self.bg_pts = cv2.goodFeaturesToTrack(self.gray, mask=self.mask, maxCorners=100, qualityLevel=0.3, minDistance=7)
+                self.detect_camera_movement()
+                self.stabilize_objects()
 
             self.draw_buttons()
             self.put_mode()
 
-            self.selection_detection()
-            self.check_collisions()
-            self.pinch_detection()
+            if(self.mode == "Interact"):
+                self.selection_detection()
+                self.check_collisions()
+                self.pinch_detection()
 
             self.draw_objects()
 
