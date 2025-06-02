@@ -32,8 +32,11 @@ pip install -r requirements.txt
 ```
 
 Run below command
+Camera option could change on device, run below command if camera feed is not captured.
 ```
 python AugmentedReality.py
+or
+python AugmentedReality.py --cam 0
 ```
 ![AR](https://github.com/hiBengu/AR-Shape/blob/main/ar.gif)
 

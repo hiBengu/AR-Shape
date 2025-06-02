@@ -20,8 +20,15 @@ class AugmentedReality():
             action="store_true",     # This makes it a boolean flag
             help="Enable debug mode"
         )
+        parser.add_argument(
+            "--cam",
+            type=int,
+            default=1,             # Default value if --count is not passed
+            help="Which camera to capture"
+        )
         args = parser.parse_args()
         self.debug = args.debug
+        self.cam = args.cam
 
         # GUI Paramters
         self.height = 480
@@ -486,7 +493,7 @@ class AugmentedReality():
                 - In interact mode, checks object selection
                 - Draws objects on frame
         """
-        self.cap = cv2.VideoCapture(1)
+        self.cap = cv2.VideoCapture(self.cam)
         self.hands = self.mp_hands.Hands(
             max_num_hands=2,
             min_detection_confidence=0.7,
