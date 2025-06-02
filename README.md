@@ -31,7 +31,15 @@ pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
-Run below command
+```
+ESC - close program
+e E - Edit Mode
+i I - Interact Mode
+u U - Undo last drawn object
+c C - Clear all objects 
+```
+
+Run below command to run the project
 Camera option could change on device, run below command if camera feed is not captured.
 ```
 python AugmentedReality.py
