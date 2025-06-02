@@ -31,6 +31,7 @@ pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
+Keybindings for the project
 ```
 ESC - close program
 e E - Edit Mode
