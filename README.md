@@ -56,7 +56,9 @@ python AugmentedReality.py --persistence
 ```
 ![ARpersistence](https://github.com/hiBengu/AR-Shape/blob/main/ar_persistence.gif)
 
+```
 I used AI for below steps during the assignment.
     - Deciding on the initial steps of the project, which libraries can be used, how many stages I should divide the project.
     - Details on the hand gesture library API and issues.
     - Details on the camera movement detection and math related debugging for movement.
+```
