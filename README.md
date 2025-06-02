@@ -35,12 +35,12 @@ Run below command
 ```
 python AugmentedReality.py
 ```
-![AR](https://github.com/Daisyliu6/Daisyliu6/blob/master/me.gif)
+![AR](https://github.com/hiBengu/AR-Shape/blob/main/ar.gif)
 
 
 Object persistence option is buggy since other moving objects could effect the camera movement detection, but still can be tried out with below option
 ```
 python AugmentedReality.py --persistence
 ```
-![ARpersistence](https://github.com/Daisyliu6/Daisyliu6/blob/master/me.gif)
+![ARpersistence](https://github.com/hiBengu/AR-Shape/blob/main/ar_persistence.gif)
 
