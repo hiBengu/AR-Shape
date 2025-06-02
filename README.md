@@ -17,7 +17,7 @@ Only requirements.txt needed to install all required packages:
 
 ```bash
 # Create a virtual environment
-python3 -m venv venv
+python -m venv venv
 
 # Activate it
 # On Linux/macOS:
