@@ -1,4 +1,5 @@
 import cv2
+import argparse
 import mediapipe as mp
 import numpy as np
 import math
@@ -8,6 +9,19 @@ class AugmentedReality():
         """
             Initializes all the parameters used in the class
         """
+        parser = argparse.ArgumentParser(description="An AR project for object movement on camera feed")
+        parser.add_argument(
+            "--persistence",
+            action="store_true",
+            help="Enable persistance mode"
+        )
+        parser.add_argument(
+            "--debug",
+            action="store_true",     # This makes it a boolean flag
+            help="Enable debug mode"
+        )
+        args = parser.parse_args()
+        self.debug = args.debug
 
         # GUI Paramters
         self.height = 480
@@ -71,10 +85,17 @@ class AugmentedReality():
         self.pinch_counter = 10
 
         # Object Movement parameters
-        self.object_persistence = False
+        self.object_persistence = args.persistence
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
     
+    def log(self, str):
+        """
+            Print given string if debug mode active.
+        """
+        if(self.debug):
+            print(str)
+
     def draw_buttons(self):
         """
             Draw the buttons specificed by self.buttons dictionary.
@@ -138,7 +159,7 @@ class AugmentedReality():
         for name, ((x1, y1), (x2, y2)) in self.buttons.items():
             if x1 <= x <= x2 and y1 <= y <= y2:
                 self.mode = name
-                print(f"Mode changed to: {self.mode}")
+                self.log(f"Mode changed to: {self.mode}")
                 return True
         return False
 
@@ -217,6 +238,7 @@ class AugmentedReality():
             if self.drawing and self.start_point:
                 self.objects.append(self.current_obj_corners)
             
+            self.log(f"Current Objects: {self.objects}")
             self.drawing = False
             self.start_point = None
             self.temp_line = []
@@ -293,7 +315,7 @@ class AugmentedReality():
         # y' = sin(θ) * (x - cx) + cos(θ) * (y - cy) + cy
         if self.selected_obj != -1:
             center = np.mean(self.objects[self.selected_obj], axis=0)
-            # print(f"Center: {center}")
+            self.log(f"Center: {center}")
 
             cos_a = math.cos(math.radians(self.pinch_direction_diff * self.rotate_multipler))
             sin_a = math.sin(math.radians(self.pinch_direction_diff * self.rotate_multipler))
@@ -409,7 +431,7 @@ class AugmentedReality():
             for j, corners in enumerate(obj):
                 self.objects[i][j] = (corners[0] + self.avg_motion[0], corners[1] + self.avg_motion[1])
 
-        # print(f"Camera shift: {self.avg_motion}")
+        self.log(f"Camera shift: {self.avg_motion}")
 
     def mask_hand(self):
         """
